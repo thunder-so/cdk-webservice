@@ -1,6 +1,6 @@
 {
   "name": "@thunderso/cdk-webservice",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Deploy any container web service on ECS Fargate with AWS CDK",
   "tags": [
     "aws",
