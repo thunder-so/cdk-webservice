@@ -1,23 +1,20 @@
 {
-  "name": "@thunderso/cdk-nuxt",
-  "version": "0.2.0",
-  "description": "Deploy Nuxt 3 on Lambda and S3 using AWS CDK",
+  "name": "@thunderso/cdk-webservice",
+  "version": "0.0.0",
+  "description": "Deploy any container web service on ECS Fargate with AWS CDK",
   "tags": [
     "aws",
     "cdk",
-    "nuxt",
-    "nuxt3",
-    "lambda",
-    "apigateway",
-    "s3",
-    "cloudfront",
+    "ecs",
+    "fargate",
+    "webservice",
     "typescript"
   ],
   "type": "module",
   "main": "index.ts",
   "repository": {
     "type": "git",
-    "url": "https://github.com/thunder-so/cdk-nuxt.git"
+    "url": "https://github.com/thunder-so/cdk-webservice.git"
   },
   "author": {
     "name": "CloudBits, Inc.",
