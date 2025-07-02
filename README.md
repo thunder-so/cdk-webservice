@@ -283,32 +283,38 @@ Here is an example `Dockerfile` which can serve any Node application:
 
 ```Dockerfile
 # ---- Build Stage ----
-FROM node:22-alpine AS builder
+FROM public.ecr.aws/docker/library/node:22-alpine AS builder
 
 WORKDIR /app
 
 # Copy all files
 COPY . .
 
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 # Install dependencies
-RUN npm install
+RUN pnpm install
 
 # Build Next.js app
-RUN npm run build
+RUN pnpm run build
 
 # ---- Production Stage ----
-FROM node:22-alpine AS runner
+FROM public.ecr.aws/docker/library/node:22-alpine AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
+
+# Install pnpm in production image
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Copy only necessary files from builder
 COPY --from=builder /app/ ./
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start"]
+CMD ["pnpm", "start"]
 ```
 
 You might want to add a `.dockerignore` to minimize the context size:
