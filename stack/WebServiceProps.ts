@@ -29,6 +29,12 @@ export interface PipelineProps {
    * If you have a custom buildspec.yml file for your app, provide the relative path to the file.
    */
   readonly buildSpecFilePath?: string;
+
+  /**
+   * The ARN of the Event Bus.
+   * - The pipeline events are broadcast to an event bus. Defaults to null.
+   */
+  readonly eventTarget?: string;
 }
 
 /**

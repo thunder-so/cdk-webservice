@@ -1,7 +1,7 @@
 import { Stack } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { WebServiceProps } from './WebServiceProps';
-import { ServiceConstruct, PipelineConstruct } from '../lib'
+import { ServiceConstruct, PipelineConstruct, EventsConstruct } from '../lib'
 
 export class WebServiceStack extends Stack {
   constructor(scope: Construct, id: string, props: WebServiceProps) {
@@ -46,12 +46,12 @@ export class WebServiceStack extends Stack {
       });
 
       // Pipeline events
-      // if (props.eventTarget) {
-      //   new EventsConstruct(this, 'PipelineEvents', {
-      //     ...props,
-      //     codePipeline: pipeline.codePipeline,
-      //   });
-      // }
+      if (props.eventTarget) {
+        new EventsConstruct(this, 'PipelineEvents', {
+          ...props,
+          codePipeline: pipeline.codePipeline,
+        });
+      }
     }; // end if
   }
 }

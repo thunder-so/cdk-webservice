@@ -1,7 +1,7 @@
 import { Construct } from 'constructs';
 import { CfnOutput, Duration, RemovalPolicy, SecretValue } from 'aws-cdk-lib';
 import { Effect, PolicyStatement } from 'aws-cdk-lib/aws-iam';
-import { PipelineProject, BuildSpec, LinuxBuildImage, ComputeType, BuildEnvironmentVariableType } from 'aws-cdk-lib/aws-codebuild';
+import { PipelineProject, BuildSpec, LinuxArmBuildImage, LinuxBuildImage, ComputeType, BuildEnvironmentVariableType } from 'aws-cdk-lib/aws-codebuild';
 import { Pipeline, Artifact, PipelineType } from 'aws-cdk-lib/aws-codepipeline';
 import { GitHubSourceAction, GitHubTrigger, CodeBuildAction, CodeBuildActionType } from 'aws-cdk-lib/aws-codepipeline-actions';
 import { Repository } from 'aws-cdk-lib/aws-ecr';
@@ -144,7 +144,7 @@ export class PipelineConstruct extends Construct {
       projectName: `${this.resourceIdPrefix}-docker-build`,
       buildSpec,
       environment: {
-        buildImage: LinuxBuildImage.STANDARD_7_0,
+        buildImage: LinuxArmBuildImage.AMAZON_LINUX_2_STANDARD_3_0,
         computeType: ComputeType.SMALL,
         privileged: true,
       },
@@ -266,7 +266,7 @@ export class PipelineConstruct extends Construct {
         },
       }),
       environment: {
-        buildImage: LinuxBuildImage.STANDARD_7_0,
+        buildImage: LinuxArmBuildImage.AMAZON_LINUX_2_STANDARD_3_0,
         computeType: ComputeType.SMALL,
         privileged: true,
       },
