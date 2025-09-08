@@ -328,8 +328,56 @@ stack
 cdk.out
 ```
 
+# Cost
 
----
+Below are estimated AWS costs for a typical deployment of this stack. 
+
+Example: Next.js container in `us-east-1` with default configuration.
+
+## Baseline Cost (No Users, Always-On Service)
+
+| Component         | Monthly Cost (No Free Tier) |
+|-------------------|----------------------------|
+| Fargate (1 task)  | ~$9                        |
+| ALB               | ~$22                       |
+| ECR               | $0 (first 500MB free)      |
+| VPC/Subnets       | $0                         |
+| CloudWatch Logs   | <$1                        |
+| Route53           | $0.50                      |
+| ACM (SSL)         | $0                         |
+| Data Transfer     | $0 (first 100GB free)      |
+| **Total**         | **~$33/month**             |
+
+- **With Free Tier:** $0 (if eligible, for 12 months, and under limits)
+- **Without Free Tier:** ~$33/month
+
+## 1000 Daily Active Users (DAU) Estimate
+
+Assumptions:
+- Each user visits once/day, 5 pageviews, 500KB/page (2.5MB/user/day)
+- Total data: 2.5GB/day, ~75GB/month
+- ALB: 1 LCU covers up to 25 new connections/sec, 3,000 active connections, 5Gbps, or 1M requests/hour (well within 1 LCU for 1000 DAU)
+- 2 Fargate tasks for redundancy
+
+| Component         | Monthly Cost (No Free Tier) |
+|-------------------|----------------------------|
+| Fargate (2 tasks) | ~$18                       |
+| ALB               | ~$22                       |
+| ECR               | $0                         |
+| VPC/Subnets       | $0                         |
+| CloudWatch Logs   | <$1                        |
+| Route53           | $0.50                      |
+| ACM (SSL)         | $0                         |
+| Data Transfer     | ~$6.75 (75GB @ $0.09/GB)   |
+| **Total**         | **~$47/month**             |
+
+- **With Free Tier:** ~$41/month (if still eligible, and under 100GB data out)
+- **Without Free Tier:** ~$47/month
+
+### Notes
+- These are estimates; actual costs may vary based on usage, region, and AWS pricing changes.
+- If you add more tasks, NAT gateways, or use more storage/logs, costs will increase.
+- For production, consider scaling, backups, and monitoring costs.
 
 ## Support
 

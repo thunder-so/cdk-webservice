@@ -154,13 +154,6 @@ export interface AppProps extends StackProps {
    * Defaults to '.'
    */
   readonly rootDir?: string;
-
-  /**
-   * The output directory of the app.
-   * This is the directory where the app's build output is located.
-   * It is relative to the root directory.
-   */
-  readonly outputDir?: string;
 }
 
 // Main WebServiceProps interface
