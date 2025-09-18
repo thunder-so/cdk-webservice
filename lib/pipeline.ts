@@ -339,7 +339,7 @@ export class PipelineConstruct extends Construct {
           stageName: 'Build',
           actions: [
             new CodeBuildAction({
-              actionName: 'BuildAndPushAction',
+              actionName: 'BuildAction',
               project: this.codeBuildProject,
               input: sourceOutput,
               outputs: [buildOutput],
