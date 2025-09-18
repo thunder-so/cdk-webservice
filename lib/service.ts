@@ -181,6 +181,7 @@ export class ServiceConstruct extends Construct {
     new CfnOutput(this, 'LoadBalancerDNS', {
       value: this.loadBalancerDnsName,
       description: 'The DNS name of the load balancer',
+      exportName: `${resourceIdPrefix}-LoadBalancerDNS`,
     });
   }
 }
