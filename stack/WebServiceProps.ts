@@ -21,7 +21,45 @@ export interface PipelineProps {
    * The properties for CodeBuild build process.
    */
   readonly buildProps?: {
+    /**
+     * Build system to use. Supports 'Nixpacks' or 'Custom Dockerfile'.
+     */
+    readonly buildSystem?: 'Nixpacks' | 'Custom Dockerfile';
+    /**
+     * Runtime name (e.g., nodejs, python)
+     */
+    readonly runtime?: string;
+    /**
+     * Runtime version (e.g., 18, 22)
+     */
+    readonly runtime_version?: string | number;
+    /**
+     * Custom install command for Nixpacks
+     */
+    readonly installcmd?: string;
+    /**
+     * Custom build command for Nixpacks
+     */
+    readonly buildcmd?: string;
+    /**
+     * Custom start command for Nixpacks
+     */
+    readonly startcmd?: string;
+    /**
+     * Files to include in build context
+     */
+    readonly include?: string[];
+    /**
+     * Files to exclude from build context
+     */
+    readonly exclude?: string[];
+    /**
+     * Environment variables for build
+     */
     readonly environment?: Array<{ [key: string]: string; }>;
+    /**
+     * Secrets for build (from Secrets Manager)
+     */
     readonly secrets?: { key: string; resource: string; }[];
   };
 

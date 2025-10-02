@@ -26,7 +26,7 @@ export class PipelineConstruct extends Construct {
   constructor(scope: Construct, id: string, props: WebServicePipelineProps) {
     super(scope, id);
 
-    this.resourceIdPrefix = `${props.application}-${props.service}-${props.environment}`.substring(0, 42);
+    this.resourceIdPrefix = `${props.application.substring(0, 7)}-${props.service.substring(0, 7)}-${props.environment.substring(0, 7)}`.substring(0, 23).toLowerCase();
 
     this.ecrRepository = this.createEcrRepository(props);
     this.codeBuildProject = this.createBuildProject(props);
@@ -85,30 +85,48 @@ export class PipelineConstruct extends Construct {
     */
   private createBuildProject(props: WebServicePipelineProps): PipelineProject {
     // BuildSpec for Docker build & push using image digest and date-based tag
+    let buildCommands: string[];
+    let dockerfilePath = props.serviceProps?.dockerFile || 'Dockerfile';
+    if (props.buildProps?.buildSystem === 'Nixpacks') {
+      // Nixpacks integration
+      buildCommands = [
+        'curl -sSL https://nixpacks.com/install.sh | bash',
+        `nixpacks build --out . . ${props.buildProps?.installcmd ? `--install-cmd \"${props.buildProps.installcmd}\"` : ''} ${props.buildProps?.buildcmd ? `--build-cmd \"${props.buildProps.buildcmd}\"` : ''} ${props.buildProps?.startcmd ? `--start-cmd \"${props.buildProps.startcmd}\"` : ''} > .nixpacks/Dockerfile`,
+        'ls -a',
+        'export IMAGE_TAG=$(date +%Y%m%d%H%M%S)',
+        'aws --version',
+        'aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPO',
+        'docker build -t $ECR_REPO:$IMAGE_TAG -f .nixpacks/Dockerfile .',
+        'docker push $ECR_REPO:$IMAGE_TAG',
+        'export IMAGE_DIGEST=$(docker inspect --format="{{index .RepoDigests 0}}" $ECR_REPO:$IMAGE_TAG | cut -d"@" -f2)',
+      ];
+      dockerfilePath = '.nixpacks/Dockerfile';
+    } else {
+      buildCommands = [
+        'export IMAGE_TAG=$(date +%Y%m%d%H%M%S)',
+        'aws --version',
+        'aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPO',
+        `docker build -t $ECR_REPO:$IMAGE_TAG -f ${dockerfilePath} .`,
+        'docker push $ECR_REPO:$IMAGE_TAG',
+        'export IMAGE_DIGEST=$(docker inspect --format="{{index .RepoDigests 0}}" $ECR_REPO:$IMAGE_TAG | cut -d"@" -f2)',
+      ];
+    }
     const buildSpec = BuildSpec.fromObject({
       version: '0.2',
       phases: {
         pre_build: {
-          commands: [
-            'export IMAGE_TAG=$(date +%Y%m%d%H%M%S)',
-            'aws --version',
-            'aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPO',
-          ],
+          commands: buildCommands.slice(0, buildCommands.indexOf('docker build -t $ECR_REPO:$IMAGE_TAG -f ' + dockerfilePath + ' .')),
         },
         build: {
-          commands: [
-            `docker build -t $ECR_REPO:$IMAGE_TAG -f ${props.serviceProps?.dockerFile || 'Dockerfile'} .`,
-            'docker push $ECR_REPO:$IMAGE_TAG',
-            'export IMAGE_DIGEST=$(docker inspect --format="{{index .RepoDigests 0}}" $ECR_REPO:$IMAGE_TAG | cut -d"@" -f2)',
-          ],
+          commands: buildCommands.slice(buildCommands.indexOf('docker build -t $ECR_REPO:$IMAGE_TAG -f ' + dockerfilePath + ' .'), buildCommands.indexOf('docker push $ECR_REPO:$IMAGE_TAG') + 1),
         },
         post_build: {
-          commands: [
+          commands: buildCommands.slice(buildCommands.indexOf('export IMAGE_DIGEST=$(docker inspect --format="{{index .RepoDigests 0}}" $ECR_REPO:$IMAGE_TAG | cut -d"@" -f2)'), buildCommands.length).concat([
             'export IMAGE_URI=$ECR_REPO@$IMAGE_DIGEST',
             'echo $IMAGE_URI > imageUri.txt',
             'echo $IMAGE_TAG > imageTag.txt',
             'echo $IMAGE_DIGEST > imageDigest.txt',
-          ],
+          ]),
         },
       },
       artifacts: {

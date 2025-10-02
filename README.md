@@ -42,6 +42,39 @@ cdk bootstrap aws://your-aws-account-id/us-east-1
 
 This package uses the `npm` package manager and is an ES6+ Module.
 
+# Nixpacks Integration
+
+You can use [Nixpacks](https://nixpacks.com/) to build your container images automatically. To enable Nixpacks, set `buildProps.buildSystem` to `'Nixpacks'` in your `WebServiceProps` configuration:
+
+```ts
+const svcProps: WebServiceProps = {
+  // ... other props
+  buildProps: {
+    buildSystem: 'Nixpacks',
+    installcmd: 'pnpm install', // optional
+    buildcmd: 'pnpm run build', // optional
+    startcmd: 'pnpm start',     // optional
+    environment: [
+      { NODE_ENV: 'production' }
+    ],
+    secrets: [
+      { key: 'DB_URL', resource: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:/my-app/DB_URL-abc123' }
+    ]
+  },
+};
+```
+
+When enabled, the pipeline will:
+
+- Install Nixpacks in the CodeBuild environment
+- Generate a Dockerfile using Nixpacks
+- Build and push the image to ECR
+- Deploy the image to ECS Fargate
+
+You can customize install, build, and start commands using the respective properties. If not set, Nixpacks will auto-detect the best commands for your project.
+
+For more advanced usage, see the [Nixpacks documentation](https://nixpacks.com/docs/usage/configuration).
+
 
 ## Installation
 

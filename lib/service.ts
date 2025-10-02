@@ -1,4 +1,7 @@
 import { Duration, CfnOutput, RemovalPolicy } from 'aws-cdk-lib';
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
 import { Construct } from 'constructs';
 import { Cluster, ContainerImage, FargateService, TaskDefinition, LogDriver, Protocol, Secret, Compatibility, CpuArchitecture } from 'aws-cdk-lib/aws-ecs';
 import { Vpc, SubnetType } from 'aws-cdk-lib/aws-ec2';
@@ -26,7 +29,7 @@ export class ServiceConstruct extends Construct {
     super(scope, id);
 
     // Set the resource prefix
-    const resourceIdPrefix = `${props.application}-${props.service}-${props.environment}`.substring(0, 42);
+    const resourceIdPrefix = `${props.application.substring(0, 7)}-${props.service.substring(0, 7)}-${props.environment.substring(0, 7)}`.substring(0, 23).toLowerCase();
 
     // VPC
     const vpc = new Vpc(this, 'Vpc', {
@@ -60,11 +63,28 @@ export class ServiceConstruct extends Construct {
       },
     });
 
+    // Nixpacks local Dockerfile generation
+    let dockerfilePath = props.serviceProps?.dockerFile;
+    if (props.buildProps?.buildSystem === 'Nixpacks') {
+      const rootDir = props.rootDir ?? '.';
+      const absRootDir = path.resolve(rootDir);
+      const installCmd = props.buildProps?.installcmd ? `--install-cmd \"${props.buildProps.installcmd}\"` : '';
+      const buildCmd = props.buildProps?.buildcmd ? `--build-cmd \"${props.buildProps.buildcmd}\"` : '';
+      const startCmd = props.buildProps?.startcmd ? `--start-cmd \"${props.buildProps.startcmd}\"` : '';
+      if (!fs.existsSync(absRootDir)) {
+        throw new Error(`Source directory does not exist: ${absRootDir}`);
+      }
+      // Generate Dockerfile using Nixpacks CLI
+      const nixpacksCmd = `nixpacks build --out \"${absRootDir}\" \"${absRootDir}\" ${installCmd} ${buildCmd} ${startCmd}`.trim();
+      execSync(nixpacksCmd, { cwd: absRootDir, encoding: 'utf8' });
+      dockerfilePath = '.nixpacks/Dockerfile';
+    }
+
     // Container
     const container = taskDef.addContainer('Container', {
       containerName: `${props.service}-container`,
       image: ContainerImage.fromAsset(props.rootDir ?? '.', {
-        file: props.serviceProps?.dockerFile,
+        file: dockerfilePath,
         buildArgs: props.serviceProps?.dockerBuildArgs
           ? Object.fromEntries(
               props.serviceProps.dockerBuildArgs.map(arg => {
