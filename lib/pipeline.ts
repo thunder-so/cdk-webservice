@@ -36,10 +36,10 @@ export class PipelineConstruct extends Construct {
     this.codePipeline = this.createPipeline(props);
 
     // Output pipeline name
-    new CfnOutput(this, 'WebServicePipelineName', {
+    new CfnOutput(this, 'CodePipelineName', {
       value: this.codePipeline.pipelineName,
       description: 'The name of the ECS Fargate deployment pipeline',
-      exportName: `${this.resourceIdPrefix}-WebServicePipelineName`,
+      exportName: `${this.resourceIdPrefix}-CodePipelineName`,
     });
   };
 
