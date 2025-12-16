@@ -67,7 +67,7 @@ export class ServiceConstruct extends Construct {
       cpu: `${props.serviceProps?.cpu ?? 256}`,
       memoryMiB: `${props.serviceProps?.memorySize ?? 512}`,
       runtimePlatform: {
-        cpuArchitecture: props.serviceProps?.architecture ?? CpuArchitecture.ARM64,
+        cpuArchitecture: props.serviceProps?.architecture ?? CpuArchitecture.X86_64,
       },
     });
 
