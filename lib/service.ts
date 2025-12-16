@@ -31,6 +31,14 @@ export class ServiceConstruct extends Construct {
     // Set the resource prefix
     const resourceIdPrefix = `${props.application.substring(0, 7)}-${props.service.substring(0, 7)}-${props.environment.substring(0, 7)}`.substring(0, 23).toLowerCase();
 
+    // Sanitize paths to ensure valid unix directory paths
+    const sanitizePath = (path: string | undefined): string => {
+      if (!path) return '';
+      return path.replace(/[^a-zA-Z0-9._\-@#$%^&*+=~ /]|\/+/g, m => m.includes('/') ? '/' : '').replace(/^\/+|\/+$/g, '')
+    };
+
+    const rootDir = path.join(props.contextDirectory || '', sanitizePath(props?.rootDir));
+
     // VPC
     const vpc = new Vpc(this, 'Vpc', {
       vpcName: `${resourceIdPrefix}-vpc`,
@@ -66,8 +74,7 @@ export class ServiceConstruct extends Construct {
     // Nixpacks local Dockerfile generation
     let dockerfilePath = props.serviceProps?.dockerFile;
     if (props.buildProps?.buildSystem === 'Nixpacks') {
-      const rootDir = props.rootDir ?? '.';
-      const absRootDir = path.resolve(rootDir);
+      const absRootDir = path.resolve(rootDir || '.');
       const installCmd = props.buildProps?.installcmd ? `--install-cmd \"${props.buildProps.installcmd}\"` : '';
       const buildCmd = props.buildProps?.buildcmd ? `--build-cmd \"${props.buildProps.buildcmd}\"` : '';
       const startCmd = props.buildProps?.startcmd ? `--start-cmd \"${props.buildProps.startcmd}\"` : '';
@@ -83,7 +90,7 @@ export class ServiceConstruct extends Construct {
     // Container
     const container = taskDef.addContainer('Container', {
       containerName: `${props.service}-container`,
-      image: ContainerImage.fromAsset(props.rootDir ?? '.', {
+      image: ContainerImage.fromAsset(rootDir || '.', {
         file: dockerfilePath,
         buildArgs: props.serviceProps?.dockerBuildArgs
           ? Object.fromEntries(

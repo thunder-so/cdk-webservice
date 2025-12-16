@@ -162,6 +162,12 @@ export interface AppProps extends StackProps {
   readonly debug?: boolean;
 
   /**
+   * Optional: directory containing the context for deployment
+   * Used for deployments with cdk.context.json
+   */
+  readonly contextDirectory?: string;
+
+  /**
    * The AWS environment (account/region) where this stack will be deployed.
    */
   readonly env: {

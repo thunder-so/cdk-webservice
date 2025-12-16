@@ -22,11 +22,20 @@ export class PipelineConstruct extends Construct {
   public readonly codeBuildProject: PipelineProject;
   public readonly codePipeline: Pipeline;
   public readonly deployProject: PipelineProject;
+  private rootDir: string;
 
   constructor(scope: Construct, id: string, props: WebServicePipelineProps) {
     super(scope, id);
 
     this.resourceIdPrefix = `${props.application.substring(0, 7)}-${props.service.substring(0, 7)}-${props.environment.substring(0, 7)}`.substring(0, 23).toLowerCase();
+
+    // Sanitize paths to ensure valid unix directory paths
+    const sanitizePath = (path: string | undefined): string => {
+      if (!path) return '';
+      return path.replace(/[^a-zA-Z0-9._\-@#$%^&*+=~ /]|\/+/g, m => m.includes('/') ? '/' : '').replace(/^\/+|\/+$/g, '')
+    };
+
+    this.rootDir = sanitizePath(props?.rootDir);
 
     this.ecrRepository = this.createEcrRepository(props);
     this.codeBuildProject = this.createBuildProject(props);
@@ -115,7 +124,10 @@ export class PipelineConstruct extends Construct {
       version: '0.2',
       phases: {
         pre_build: {
-          commands: buildCommands.slice(0, buildCommands.indexOf('docker build -t $ECR_REPO:$IMAGE_TAG -f ' + dockerfilePath + ' .')),
+          commands: [
+            ...(this.rootDir ? [`cd ${this.rootDir}`] : []),
+            ...buildCommands.slice(0, buildCommands.indexOf('docker build -t $ECR_REPO:$IMAGE_TAG -f ' + dockerfilePath + ' .'))
+          ],
         },
         build: {
           commands: buildCommands.slice(buildCommands.indexOf('docker build -t $ECR_REPO:$IMAGE_TAG -f ' + dockerfilePath + ' .'), buildCommands.indexOf('docker push $ECR_REPO:$IMAGE_TAG') + 1),
@@ -130,7 +142,11 @@ export class PipelineConstruct extends Construct {
         },
       },
       artifacts: {
-        files: [
+        files: this.rootDir ? [
+          `${this.rootDir}/imageUri.txt`,
+          `${this.rootDir}/imageTag.txt`,
+          `${this.rootDir}/imageDigest.txt`,
+        ] : [
           'imageUri.txt',
           'imageTag.txt',
           'imageDigest.txt',
@@ -199,9 +215,9 @@ export class PipelineConstruct extends Construct {
           pre_build: {
             commands: [
               'echo "Starting ECS deployment..."',
-              'IMAGE_URI=$(cat imageUri.txt)',
-              'IMAGE_TAG=$(cat imageTag.txt)',
-              'IMAGE_DIGEST=$(cat imageDigest.txt)',
+              `IMAGE_URI=$(cat ${this.rootDir ? `${this.rootDir}/imageUri.txt` : 'imageUri.txt'})`,
+              `IMAGE_TAG=$(cat ${this.rootDir ? `${this.rootDir}/imageTag.txt` : 'imageTag.txt'})`,
+              `IMAGE_DIGEST=$(cat ${this.rootDir ? `${this.rootDir}/imageDigest.txt` : 'imageDigest.txt'})`,
               'echo "Deploying image: $IMAGE_URI (tag: $IMAGE_TAG, digest: $IMAGE_DIGEST)"',
               // Generate taskdef.json
               [
