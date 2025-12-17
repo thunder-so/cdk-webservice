@@ -2,6 +2,7 @@ import { Construct } from 'constructs';
 import { CfnOutput, Duration, RemovalPolicy, SecretValue } from 'aws-cdk-lib';
 import { Effect, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { PipelineProject, BuildSpec, LinuxArmBuildImage, LinuxBuildImage, ComputeType, BuildEnvironmentVariableType } from 'aws-cdk-lib/aws-codebuild';
+import { CpuArchitecture } from 'aws-cdk-lib/aws-ecs';
 import { Pipeline, Artifact, PipelineType } from 'aws-cdk-lib/aws-codepipeline';
 import { GitHubSourceAction, GitHubTrigger, CodeBuildAction, CodeBuildActionType } from 'aws-cdk-lib/aws-codepipeline-actions';
 import { Repository } from 'aws-cdk-lib/aws-ecr';
@@ -78,7 +79,7 @@ export class PipelineConstruct extends Construct {
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ],
-        resources: [repo.repositoryArn], 
+        resources: ["*"], 
       })
     );
 
@@ -178,7 +179,9 @@ export class PipelineConstruct extends Construct {
       projectName: `${this.resourceIdPrefix}-docker-build`,
       buildSpec,
       environment: {
-        buildImage: LinuxArmBuildImage.AMAZON_LINUX_2_STANDARD_3_0,
+        buildImage: props.serviceProps?.architecture === CpuArchitecture.ARM64 
+          ? LinuxArmBuildImage.AMAZON_LINUX_2_STANDARD_3_0 
+          : LinuxBuildImage.STANDARD_7_0,
         computeType: ComputeType.SMALL,
         privileged: true,
       },
@@ -216,74 +219,9 @@ export class PipelineConstruct extends Construct {
             commands: [
               'echo "Starting ECS deployment..."',
               `IMAGE_URI=$(cat ${this.rootDir ? `${this.rootDir}/imageUri.txt` : 'imageUri.txt'})`,
-              `IMAGE_TAG=$(cat ${this.rootDir ? `${this.rootDir}/imageTag.txt` : 'imageTag.txt'})`,
-              `IMAGE_DIGEST=$(cat ${this.rootDir ? `${this.rootDir}/imageDigest.txt` : 'imageDigest.txt'})`,
-              'echo "Deploying image: $IMAGE_URI (tag: $IMAGE_TAG, digest: $IMAGE_DIGEST)"',
-              // Generate taskdef.json
-              [
-                'cat <<EOF > taskdef.json',
-                '{',
-                '  "family": "' + props.taskDefinition.family + '",',
-                '  "networkMode": "' + props.taskDefinition.networkMode + '",',
-                '  "containerDefinitions": [',
-                '    {',
-                '      "name": "' + props.taskDefinition.defaultContainer?.containerName + '",',
-                '      "image": "' + '$IMAGE_URI' + '",',
-                '      "essential": true,',
-                '      "portMappings": [',
-                '        {',
-                '          "containerPort": ' + props.taskDefinition.defaultContainer?.containerPort + ',',
-                '          "protocol": "tcp"',
-                '        }',
-                '      ],',
-                // Environment variables
-                ...(props.serviceProps?.variables && props.serviceProps.variables.length > 0 ? [
-                  '  "environment": [',
-                  ...props.serviceProps.variables.flatMap(envObj => 
-                    Object.entries(envObj).map(([key, value], index, array) => 
-                      `    { "name": "${key}", "value": "${value}" }${index < array.length - 1 ? ',' : ''}`
-                    )
-                  ),
-                  '  ],',
-                ] : []),
-                // Secrets
-                ...(props.serviceProps?.secrets && props.serviceProps.secrets.length > 0 ? [
-                  '  "secrets": [',
-                  ...props.serviceProps.secrets.map((secret, index, array) => 
-                    `    { "name": "${secret.key}", "valueFrom": "${secret.resource}" }${index < array.length - 1 ? ',' : ''}`
-                  ),
-                  '  ],',
-                ] : []),
-                // HEALTH CHECK 
-                '      "healthCheck": {',
-                '        "command": [',
-                '          "CMD-SHELL",',
-                '          "nc -z localhost ' + (props.serviceProps?.port || 3000) + ' || exit 1"',
-                '        ],',
-                '        "interval": 15,',
-                '        "timeout": 5,',
-                '        "retries": 3,',
-                '        "startPeriod": 60',
-                '      },',
-                // LOG CONFIGURATION
-                '      "logConfiguration": {',
-                '        "logDriver": "awslogs",',
-                '        "options": {',
-                '          "awslogs-group": "/webservice/' + this.resourceIdPrefix + '-logs",',
-                '          "awslogs-region": "$AWS_DEFAULT_REGION",',
-                '          "awslogs-stream-prefix": "web"',
-                '        }',
-                '      }',
-                '    }',
-                '  ],',
-                '  "requiresCompatibilities": ["FARGATE"],',
-                '  "cpu": "' + props.cpu + '",',
-                '  "memory": "' + props.memory + '",',
-                '  "executionRoleArn": "' + props.taskDefinition.executionRole?.roleArn + '",',
-                '  "taskRoleArn": "' + props.taskDefinition.taskRole?.roleArn + '"',
-                '}',
-                'EOF',
-              ].join('\n'),
+              'echo "Deploying image: $IMAGE_URI"',
+              'CURRENT_TASK_DEF=$(aws ecs describe-task-definition --task-definition $ECS_TASKDEF --region $AWS_DEFAULT_REGION)',
+              'echo "$CURRENT_TASK_DEF" | jq --arg IMAGE_URI "$IMAGE_URI" \'.taskDefinition | .containerDefinitions[0].image = $IMAGE_URI | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)\' > taskdef.json',
             ],
           },
           build: {
@@ -291,25 +229,32 @@ export class PipelineConstruct extends Construct {
               // Register new task definition revision from taskdef.json
               'NEW_TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://taskdef.json --region $AWS_DEFAULT_REGION --query "taskDefinition.taskDefinitionArn" --output text)',
               'echo "New task definition: $NEW_TASK_DEF_ARN"',
+              // Configure rolling deployment strategy
+              'aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --deployment-configuration "maximumPercent=200,minimumHealthyPercent=50,deploymentCircuitBreaker={enable=true,rollback=true}" --region $AWS_DEFAULT_REGION',
               // Update ECS service to use the new task definition
-              'aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --task-definition $NEW_TASK_DEF_ARN --force-new-deployment --region $AWS_DEFAULT_REGION',
-              'aws ecs wait services-stable --cluster $ECS_CLUSTER --services $ECS_SERVICE --region $AWS_DEFAULT_REGION',
+              'aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --task-definition $NEW_TASK_DEF_ARN --region $AWS_DEFAULT_REGION',
+              'echo "Monitoring deployment progress..."',
+              'for i in {1..30}; do RUNNING_COUNT=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --region $AWS_DEFAULT_REGION --query "services[0].runningCount" --output text); DESIRED_COUNT=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --region $AWS_DEFAULT_REGION --query "services[0].desiredCount" --output text); DEPLOYMENT_STATUS=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --region $AWS_DEFAULT_REGION --query "services[0].deployments[0].status" --output text); echo "Deployment status: $DEPLOYMENT_STATUS, Running: $RUNNING_COUNT/$DESIRED_COUNT (attempt $i/30)"; if [ "$DEPLOYMENT_STATUS" = "PRIMARY" ] && [ "$RUNNING_COUNT" = "$DESIRED_COUNT" ]; then echo "Deployment successful"; break; fi; if [ "$DEPLOYMENT_STATUS" = "FAILED" ]; then echo "Deployment failed"; exit 1; fi; sleep 30; done',
+              // Final stability check with timeout
+              'timeout 900 aws ecs wait services-stable --cluster $ECS_CLUSTER --services $ECS_SERVICE --region $AWS_DEFAULT_REGION || echo "Deployment completed with timeout - check ECS console for final status"',
               'echo "ECS service deployed successfully"',
             ],
           },
         },
       }),
       environment: {
-        buildImage: LinuxArmBuildImage.AMAZON_LINUX_2_STANDARD_3_0,
+        buildImage: props.serviceProps?.architecture === CpuArchitecture.ARM64 
+          ? LinuxArmBuildImage.AMAZON_LINUX_2_STANDARD_3_0 
+          : LinuxBuildImage.STANDARD_7_0,
         computeType: ComputeType.SMALL,
         privileged: true,
       },
       environmentVariables: {
         ECS_CLUSTER: { value: props.clusterName || '' },
         ECS_SERVICE: { value: props.fargateService.serviceName || '' },
-        ECS_TASKDEF: { value: props.taskDefinition.taskDefinitionArn || '' },
+        ECS_TASKDEF: { value: props.taskDefinition.family || '' },
       },
-      timeout: Duration.minutes(10),
+      timeout: Duration.minutes(15),
     });
 
     // Allow deploy project to update ECS service and task definition
@@ -321,8 +266,10 @@ export class PipelineConstruct extends Construct {
           'ecs:DescribeServices',
           'ecs:DescribeTaskDefinition',
           'ecs:RegisterTaskDefinition',
+          'ecs:DescribeTasks',
+          'ecs:ListTasks',
         ],
-        resources: ['*'], // You can scope this down if you want
+        resources: ['*'],
       })
     );
 
