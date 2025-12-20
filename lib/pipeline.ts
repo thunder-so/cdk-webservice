@@ -101,7 +101,10 @@ export class PipelineConstruct extends Construct {
       // Nixpacks integration
       buildCommands = [
         'curl -sSL https://nixpacks.com/install.sh | bash',
-        `nixpacks build --out . . ${props.buildProps?.installcmd ? `--install-cmd \"${props.buildProps.installcmd}\"` : ''} ${props.buildProps?.buildcmd ? `--build-cmd \"${props.buildProps.buildcmd}\"` : ''} ${props.buildProps?.startcmd ? `--start-cmd \"${props.buildProps.startcmd}\"` : ''} > .nixpacks/Dockerfile`,
+        'export DOCKER_BUILDKIT=1',
+        'export DOCKER_CLI_EXPERIMENTAL=enabled',
+        'mkdir -p .nixpacks',
+        `nixpacks build --env NIXPACKS_NODE_VERSION=${props.buildProps?.runtime_version || '20'} --out . . ${props.buildProps?.installcmd ? `--install-cmd \"${props.buildProps.installcmd}\"` : ''} ${props.buildProps?.buildcmd ? `--build-cmd \"${props.buildProps.buildcmd}\"` : ''} ${props.buildProps?.startcmd ? `--start-cmd \"${props.buildProps.startcmd}\"` : ''}`,
         'ls -a',
         'export IMAGE_TAG=$(date +%Y%m%d%H%M%S)',
         'aws --version',

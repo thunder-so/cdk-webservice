@@ -4,6 +4,7 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { Construct } from 'constructs';
 import { Cluster, ContainerImage, FargateService, TaskDefinition, LogDriver, Protocol, Secret, Compatibility, CpuArchitecture } from 'aws-cdk-lib/aws-ecs';
+import { Platform } from 'aws-cdk-lib/aws-ecr-assets';
 import { Vpc, SubnetType } from 'aws-cdk-lib/aws-ec2';
 import { ApplicationLoadBalancer, ApplicationProtocol, ApplicationTargetGroup, ListenerAction, TargetType } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { Secret as SecretsManagerSecret } from 'aws-cdk-lib/aws-secretsmanager';
@@ -82,15 +83,19 @@ export class ServiceConstruct extends Construct {
         throw new Error(`Source directory does not exist: ${absRootDir}`);
       }
       // Generate Dockerfile using Nixpacks CLI
-      const nixpacksCmd = `nixpacks build --out \"${absRootDir}\" \"${absRootDir}\" ${installCmd} ${buildCmd} ${startCmd}`.trim();
-      execSync(nixpacksCmd, { cwd: absRootDir, encoding: 'utf8' });
+      const runtimeVersion = props.buildProps?.runtime_version?.toString() || '20';
+      const nixpacksCmd = `DOCKER_BUILDKIT=1 DOCKER_CLI_EXPERIMENTAL=enabled nixpacks build --env NIXPACKS_NODE_VERSION=${runtimeVersion} --out \"${absRootDir}\" \"${absRootDir}\" ${installCmd} ${buildCmd} ${startCmd}`.trim();
+      execSync(nixpacksCmd, { cwd: absRootDir, encoding: 'utf8', shell: '/bin/bash' });
       dockerfilePath = '.nixpacks/Dockerfile';
     }
 
     // Container
+    const platform = props.serviceProps?.architecture === CpuArchitecture.ARM64 ? Platform.LINUX_ARM64 : Platform.LINUX_AMD64;
+
     const container = taskDef.addContainer('Container', {
       containerName: `${props.service}-container`,
       image: ContainerImage.fromAsset(rootDir || '.', {
+        platform: platform,
         file: dockerfilePath,
         buildArgs: props.serviceProps?.dockerBuildArgs
           ? Object.fromEntries(
@@ -102,7 +107,10 @@ export class ServiceConstruct extends Construct {
           : undefined,
       }),
       logging: LogDriver.awsLogs({ logGroup, streamPrefix: 'web' }),
-      environment: props.serviceProps?.variables?.reduce((acc, obj) => ({ ...acc, ...obj }), {}) ?? {},
+      environment: {
+        HOSTNAME: '0.0.0.0',
+        ...(props.serviceProps?.variables?.reduce((acc, obj) => ({ ...acc, ...obj }), {}) ?? {})
+      },
       secrets: props.serviceProps?.secrets
         ? Object.fromEntries(
             props.serviceProps.secrets.map(s => [
@@ -118,7 +126,7 @@ export class ServiceConstruct extends Construct {
       healthCheck: {
         command: [
           'CMD-SHELL',
-          `nc -z localhost ${props.serviceProps?.port || 3000} || exit 1`
+          `timeout 5 bash -c "</dev/tcp/localhost/${props.serviceProps?.port || 3000}" || exit 1`
         ],
         interval: Duration.seconds(15),
         timeout: Duration.seconds(5),
